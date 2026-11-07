@@ -18,7 +18,9 @@ const sha256 = async (value: string) =>
   b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
 
 export function baseUrl(env: Env, request: Request): string {
-  return env.PUBLIC_URL ? env.PUBLIC_URL.replace(/\/+$/, "") : new URL(request.url).origin;
+  const configured = env.PUBLIC_URL?.trim();
+  if (!configured) return new URL(request.url).origin;
+  return (/^https?:\/\//i.test(configured) ? configured : `https://${configured}`).replace(/\/+$/, "");
 }
 
 function safeNext(next: unknown): string {

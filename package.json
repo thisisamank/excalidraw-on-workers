@@ -111,7 +111,7 @@
         "description": "Your email address. It becomes the first admin when it signs in, and admins invite everyone else from `/admin`."
       },
       "PUBLIC_URL": {
-        "description": "Optional. The public URL of this Worker, for example `https://draw.example.com`. Leave empty to use the URL of each request."
+        "description": "Optional. The public URL of this Worker, for example `https://draw.example.com`. A bare domain also works. Leave empty to use the URL of each request."
       }
     }
   }
