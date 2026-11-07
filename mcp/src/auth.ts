@@ -2,7 +2,7 @@ import { AuthorizationError, type OAuthHelpers } from "@cloudflare/workers-oauth
 import { deleteUserBoards, handleBoards } from "./boards.js";
 import { appPage, authPage, avatar, callout, esc, icon, redirect, relativeTime } from "./ui.js";
 
-export type Env = Cloudflare.Env & { OAUTH_PROVIDER: OAuthHelpers };
+export type Env = Cloudflare.Env & { OAUTH_PROVIDER: OAuthHelpers; MAIL_FROM: string; ADMIN_EMAIL?: string };
 type User = { id: number; email: string; is_admin: number };
 
 const SESSION_COOKIE = "sid";
