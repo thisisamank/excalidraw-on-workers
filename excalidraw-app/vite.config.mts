@@ -306,6 +306,9 @@ export default defineConfig(({ mode }) => {
         },
 
         workbox: {
+          navigateFallbackDenylist: [
+            /^\/(authorize|login|logout|admin|auth|token|register|mcp|boards|api|\.well-known)(\/|\?|$)/,
+          ],
           // don't precache fonts, locales and separate chunks
           globIgnores: [
             "fonts.css",
