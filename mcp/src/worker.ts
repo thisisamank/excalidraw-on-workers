@@ -11,7 +11,7 @@ async function handleMcp(request: Request, env: Env, ctx: ExecutionContext): Pro
   const { userId } = ctx.props as { userId: number };
   const base = baseUrl(env, request);
   const server = new McpServer({ name: "Excalidraw", version: "1.0.0" });
-  registerTools(server, async () => html, new KvCheckpointStore(env.CHECKPOINTS), base, mcpBoardStore(env, userId, base));
+  registerTools(server, async () => html, new KvCheckpointStore(env.OAUTH_KV), base, mcpBoardStore(env, userId, base));
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   await server.connect(transport);
   return transport.handleRequest(request);
