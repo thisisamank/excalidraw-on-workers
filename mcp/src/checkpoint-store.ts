@@ -141,3 +141,26 @@ export function createVercelStore(): CheckpointStore {
   }
   return new MemoryCheckpointStore();
 }
+
+export interface KvLike {
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+}
+
+export class KvCheckpointStore implements CheckpointStore {
+  constructor(private kv: KvLike) {}
+  async save(id: string, data: { elements: any[] }): Promise<void> {
+    validateCheckpointId(id);
+    const serialized = JSON.stringify(data);
+    if (serialized.length > MAX_CHECKPOINT_BYTES) {
+      throw new Error(`Checkpoint data exceeds ${MAX_CHECKPOINT_BYTES} byte limit`);
+    }
+    await this.kv.put(`cp:${id}`, serialized, { expirationTtl: REDIS_TTL_SECONDS });
+  }
+  async load(id: string): Promise<{ elements: any[] } | null> {
+    validateCheckpointId(id);
+    const raw = await this.kv.get(`cp:${id}`);
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch { return null; }
+  }
+}
