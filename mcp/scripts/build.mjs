@@ -31,6 +31,8 @@ renameSync(
 );
 rmSync(join(root, "dist", "src"), { recursive: true, force: true });
 
+if (process.env.WORKER_ONLY) process.exit(0);
+
 // 4. Build server types
 run("tsc -p tsconfig.server.json");
 
