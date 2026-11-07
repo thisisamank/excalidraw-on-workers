@@ -92,9 +92,27 @@
     "release:latest": "node scripts/release.js --tag=latest",
     "rm:build": "rimraf --glob excalidraw-app/build excalidraw-app/dist excalidraw-app/dev-dist packages/*/dist packages/*/build examples/*/build examples/*/dist",
     "rm:node_modules": "rimraf --glob node_modules excalidraw-app/node_modules packages/*/node_modules",
-    "clean-install": "yarn rm:node_modules && yarn install"
+    "clean-install": "yarn rm:node_modules && yarn install",
+    "build:mcp": "cd mcp && npx -y pnpm@10.11.0 install --frozen-lockfile --ignore-scripts && WORKER_ONLY=1 node scripts/build.mjs",
+    "build:workers": "yarn build:app:docker && yarn build:mcp",
+    "check:workers": "npx -y wrangler@4 types --strict-vars=false mcp/worker-configuration.d.ts && cd mcp && npx tsc -p tsconfig.worker.json",
+    "dev:workers": "yarn build:workers && npx -y wrangler@4 d1 migrations apply DB --local && npx -y wrangler@4 dev",
+    "deploy": "yarn build:workers && npx -y wrangler@4 d1 migrations apply DB --remote && npx -y wrangler@4 deploy"
   },
   "resolutions": {
     "strip-ansi": "6.0.1"
+  },
+  "cloudflare": {
+    "bindings": {
+      "MAIL_FROM": {
+        "description": "Sender address for sign-in emails, for example `login@yourdomain.com`. The domain must have [Email Sending](https://developers.cloudflare.com/email-service/) enabled on this account."
+      },
+      "ADMIN_EMAIL": {
+        "description": "Your email address. It becomes the first admin when it signs in, and admins invite everyone else from `/admin`."
+      },
+      "PUBLIC_URL": {
+        "description": "Optional. The public URL of this Worker, for example `https://draw.example.com`. Leave empty to use the URL of each request."
+      }
+    }
   }
 }

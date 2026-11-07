@@ -1,0 +1,2 @@
+MAIL_FROM=login@example.com
+ADMIN_EMAIL=you@example.com

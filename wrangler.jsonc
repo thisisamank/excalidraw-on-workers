@@ -1,0 +1,19 @@
+{
+  "name": "excalidraw",
+  "main": "mcp/src/worker.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "excalidraw-app/build",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+  "d1_databases": [{ "binding": "DB", "database_name": "excalidraw-auth", "migrations_dir": "mcp/migrations" }],
+  "kv_namespaces": [{ "binding": "OAUTH_KV" }, { "binding": "CHECKPOINTS" }],
+  "r2_buckets": [{ "binding": "BOARDS", "bucket_name": "excalidraw-boards" }],
+  "send_email": [{ "name": "EMAIL" }],
+  "ratelimits": [{ "name": "LOGIN_LIMITER", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } }],
+  "vars": { "PUBLIC_URL": "" },
+  "observability": { "enabled": true }
+}
