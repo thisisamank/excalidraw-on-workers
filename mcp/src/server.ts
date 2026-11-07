@@ -1,7 +1,7 @@
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult, ReadResourceResult } from "@modelcontextprotocol/sdk/types.js";
-import crypto from "node:crypto";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { deflateSync } from "node:zlib";
@@ -12,9 +12,6 @@ import type { CheckpointStore } from "./checkpoint-store.js";
 const MAX_INPUT_BYTES = 5 * 1024 * 1024;
 
 // Works both from source (src/server.ts) and compiled (dist/server.js)
-const DIST_DIR = import.meta.filename.endsWith(".ts")
-  ? path.join(import.meta.dirname, "..", "dist")
-  : import.meta.dirname;
 
 // ============================================================
 // RECALL: shared knowledge for the agent
@@ -398,7 +395,12 @@ Use the Primary Colors from above — they're bright enough on dark backgrounds.
  * Registers all Excalidraw tools and resources on the given McpServer.
  * Shared between local (main.ts) and Vercel (api/mcp.ts) entry points.
  */
-export function registerTools(server: McpServer, distDir: string, store: CheckpointStore): void {
+export function registerTools(
+  server: McpServer,
+  loadHtml: () => Promise<string>,
+  store: CheckpointStore,
+  appUrl = "https://excalidraw.com",
+): void {
   const resourceUri = "ui://excalidraw/mcp-app.html";
 
   // ============================================================
@@ -492,7 +494,7 @@ Call read_me first to learn the element format.`,
         ? `\nTip: your cameraUpdate used ${badRatio.width}x${badRatio.height} — try to stick with 4:3 aspect ratio (e.g. 400x300, 800x600) in future.`
         : "";
 
-      const checkpointId = crypto.randomUUID().replace(/-/g, "").slice(0, 18);
+      const checkpointId = randomUUID().replace(/-/g, "").slice(0, 18);
       await store.save(checkpointId, { elements: resolvedElements });
       return {
         content: [{ type: "text", text: `Diagram displayed! Checkpoint id: "${checkpointId}".
@@ -556,13 +558,13 @@ However, if the user wants to edit something on this diagram "${checkpointId}", 
         const compressed = deflateSync(Buffer.from(innerPayload));
 
         // 3. Generate AES-GCM 128-bit key + encrypt
-        const cryptoKey = await globalThis.crypto.subtle.generateKey(
+        const cryptoKey = await crypto.subtle.generateKey(
           { name: "AES-GCM", length: 128 },
           true,
           ["encrypt"],
-        );
-        const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
-        const encrypted = await globalThis.crypto.subtle.encrypt(
+        ) as Parameters<typeof crypto.subtle.encrypt>[1];
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const encrypted = await crypto.subtle.encrypt(
           { name: "AES-GCM", iv },
           cryptoKey,
           compressed,
@@ -587,8 +589,8 @@ However, if the user wants to edit something on this diagram "${checkpointId}", 
         const { id } = (await res.json()) as { id: string };
 
         // 6. Export key as base64url string
-        const jwk = await globalThis.crypto.subtle.exportKey("jwk", cryptoKey);
-        const url = `https://excalidraw.com/#json=${id},${jwk.k}`;
+        const jwk = await crypto.subtle.exportKey("jwk", cryptoKey) as { k?: string };
+        const url = `${appUrl}/#json=${id},${jwk.k}`;
 
         return { content: [{ type: "text", text: url }] };
       } catch (err) {
@@ -663,7 +665,7 @@ However, if the user wants to edit something on this diagram "${checkpointId}", 
     resourceUri,
     { mimeType: RESOURCE_MIME_TYPE },
     async (): Promise<ReadResourceResult> => {
-      const html = await fs.readFile(path.join(distDir, "mcp-app.html"), "utf-8");
+      const html = await loadHtml();
       return {
         contents: [{
           uri: resourceUri,
@@ -691,6 +693,9 @@ export function createServer(store: CheckpointStore): McpServer {
     name: "Excalidraw",
     version: "1.0.0",
   });
-  registerTools(server, DIST_DIR, store);
+  const distDir = import.meta.filename.endsWith(".ts")
+    ? path.join(import.meta.dirname, "..", "dist")
+    : import.meta.dirname;
+  registerTools(server, () => fs.readFile(path.join(distDir, "mcp-app.html"), "utf-8"), store);
   return server;
 }
