@@ -101,6 +101,13 @@ import Collab, {
 } from "./collab/Collab";
 import { AppFooter } from "./components/AppFooter";
 import { AppMainMenu } from "./components/AppMainMenu";
+import {
+  boardId,
+  flushBoardSave,
+  loadBoard,
+  markBoardLoaded,
+  saveBoard,
+} from "./data/board";
 import { AppWelcomeScreen } from "./components/AppWelcomeScreen";
 import {
   ExportToExcalidrawPlus,
@@ -223,6 +230,19 @@ const initializeScene = async (opts: {
     | { isExternalScene: false; id?: null; key?: null }
   )
 > => {
+  if (boardId) {
+    try {
+      const board = await loadBoard(boardId);
+      markBoardLoaded(board.elements, board.appState, board.files);
+      return { scene: board, isExternalScene: false };
+    } catch (error: any) {
+      return {
+        scene: { appState: { errorMessage: error.message } },
+        isExternalScene: false,
+      };
+    }
+  }
+
   const searchParams = new URLSearchParams(window.location.search);
   const id = searchParams.get("id");
   const jsonBackendMatch = window.location.hash.match(
@@ -563,7 +583,9 @@ const ExcalidrawWrapper = () => {
     }
 
     initializeScene({ collabAPI, excalidrawAPI }).then(async (data) => {
-      loadImages(data, /* isInitialLoad */ true);
+      if (!boardId) {
+        loadImages(data, /* isInitialLoad */ true);
+      }
       initialStatePromiseRef.current.promise.resolve(data.scene);
     });
 
@@ -595,7 +617,7 @@ const ExcalidrawWrapper = () => {
     };
 
     const syncData = debounce(() => {
-      if (isTestEnv()) {
+      if (isTestEnv() || boardId) {
         return;
       }
       if (
@@ -655,11 +677,13 @@ const ExcalidrawWrapper = () => {
 
     const onUnload = () => {
       LocalData.flushSave();
+      flushBoardSave();
     };
 
     const visibilityChange = (event: FocusEvent | Event) => {
       if (event.type === EVENT.BLUR || document.hidden) {
         LocalData.flushSave();
+        flushBoardSave();
       }
       if (
         event.type === EVENT.VISIBILITY_CHANGE ||
@@ -690,6 +714,7 @@ const ExcalidrawWrapper = () => {
   useEffect(() => {
     const unloadHandler = (event: BeforeUnloadEvent) => {
       LocalData.flushSave();
+      flushBoardSave();
 
       if (
         excalidrawAPI &&
@@ -721,9 +746,9 @@ const ExcalidrawWrapper = () => {
       collabAPI.syncElements(elements);
     }
 
-    // this check is redundant, but since this is a hot path, it's best
-    // not to evaludate the nested expression every time
-    if (!LocalData.isSavePaused()) {
+    if (boardId) {
+      saveBoard(boardId, elements, appState, files);
+    } else if (!LocalData.isSavePaused()) {
       LocalData.save(elements, appState, files, () => {
         if (excalidrawAPI) {
           let didChange = false;
