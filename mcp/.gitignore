@@ -6,3 +6,6 @@ dist/
 bun.lock
 .vscode
 opencode.json
+.wrangler
+.dev.vars
+worker-configuration.d.ts
