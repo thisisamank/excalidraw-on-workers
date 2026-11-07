@@ -395,11 +395,19 @@ Use the Primary Colors from above — they're bright enough on dark backgrounds.
  * Registers all Excalidraw tools and resources on the given McpServer.
  * Shared between local (main.ts) and Vercel (api/mcp.ts) entry points.
  */
+export interface BoardStore {
+  create(name: string, elements: any[]): Promise<{ id: string; url: string }>;
+  update(id: string, elements: any[]): Promise<{ id: string; url: string } | null>;
+  load(id: string): Promise<any[] | null>;
+  list(): Promise<{ id: string; name: string; url: string; updatedAt: string }[]>;
+}
+
 export function registerTools(
   server: McpServer,
   loadHtml: () => Promise<string>,
   store: CheckpointStore,
   appUrl = "https://excalidraw.com",
+  boards?: BoardStore,
 ): void {
   const resourceUri = "ui://excalidraw/mcp-app.html";
 
@@ -417,6 +425,23 @@ export function registerTools(
     },
   );
 
+  if (boards) {
+    server.registerTool(
+      "list_boards",
+      {
+        description: "Lists the user's Excalidraw boards (pages), newest first. Use a board's id as boardId in create_view to draw on that board.",
+        annotations: { readOnlyHint: true },
+      },
+      async (): Promise<CallToolResult> => {
+        const list = await boards.list();
+        const text = list.length
+          ? list.map((b) => `- ${b.name} (id: ${b.id}, updated ${b.updatedAt}) ${b.url}`).join("\n")
+          : "No boards yet. create_view without boardId creates one.";
+        return { content: [{ type: "text", text }] };
+      },
+    );
+  }
+
   // ============================================================
   // Tool 2: create_view (Excalidraw SVG)
   // ============================================================
@@ -431,11 +456,20 @@ Call read_me first to learn the element format.`,
         elements: z.string().describe(
           "JSON array string of Excalidraw elements. Must be valid JSON — no comments, no trailing commas. Keep compact. Call read_me first for format reference."
         ),
+        ...(boards ? {
+          boardId: z.string().optional().describe(
+            "Board (page) to draw on. Omit to create a new board for this diagram. Pass it only when the user names an existing board (use list_boards to find ids) or when continuing a diagram on the same board. The drawing is added on top of the board's current content."
+          ),
+          title: z.string().max(200).optional().describe("Name for the new board. Used only when boardId is omitted."),
+        } : {}),
       }),
       annotations: { readOnlyHint: true },
       _meta: { ui: { resourceUri } },
     },
-    async ({ elements }): Promise<CallToolResult> => {
+    async (args: { elements: string; boardId?: unknown; title?: unknown }): Promise<CallToolResult> => {
+      const { elements } = args;
+      const boardId = typeof args.boardId === "string" && args.boardId ? args.boardId : undefined;
+      const title = typeof args.title === "string" ? args.title : undefined;
       if (elements.length > MAX_INPUT_BYTES) {
         return {
           content: [{ type: "text", text: `Elements input exceeds ${MAX_INPUT_BYTES} byte limit. Reduce the number of elements or use checkpoints to build incrementally.` }],
@@ -455,15 +489,31 @@ Call read_me first to learn the element format.`,
       // Resolve restoreCheckpoint references and save fully resolved state
       const restoreEl = parsed.find((el: any) => el.type === "restoreCheckpoint");
       let resolvedElements: any[];
+      let targetBoardId = boards ? boardId : undefined;
+      let base: { elements: any[] } | null = null;
 
       if (restoreEl?.id) {
-        const base = await store.load(restoreEl.id);
-        if (!base) {
+        const checkpoint = await store.load(restoreEl.id);
+        if (!checkpoint) {
           return {
             content: [{ type: "text", text: `Checkpoint "${restoreEl.id}" not found — it may have expired or never existed. Please recreate the diagram from scratch.` }],
             isError: true,
           };
         }
+        base = checkpoint;
+        targetBoardId ??= boards ? checkpoint.boardId : undefined;
+      } else if (targetBoardId && boards) {
+        const boardElements = await boards.load(targetBoardId);
+        if (!boardElements) {
+          return {
+            content: [{ type: "text", text: `Board "${targetBoardId}" not found. Call list_boards for valid ids, or omit boardId to create a new board.` }],
+            isError: true,
+          };
+        }
+        base = { elements: boardElements };
+      }
+
+      if (base) {
 
         const deleteIds = new Set<string>();
         for (const el of parsed) {
@@ -494,10 +544,26 @@ Call read_me first to learn the element format.`,
         ? `\nTip: your cameraUpdate used ${badRatio.width}x${badRatio.height} — try to stick with 4:3 aspect ratio (e.g. 400x300, 800x600) in future.`
         : "";
 
+      let board: { id: string; url: string } | null = null;
+      if (boards) {
+        board = targetBoardId
+          ? await boards.update(targetBoardId, resolvedElements)
+          : await boards.create(title?.trim() || `Diagram ${new Date().toISOString().slice(0, 16).replace("T", " ")}`, resolvedElements);
+        if (!board) {
+          return {
+            content: [{ type: "text", text: `Board "${targetBoardId}" not found. Call list_boards for valid ids, or omit boardId to create a new board.` }],
+            isError: true,
+          };
+        }
+      }
+      const boardHint = board
+        ? `\nSaved to board "${board.id}": ${board.url}\nTo keep drawing on this board, pass boardId "${board.id}" (or restore this checkpoint). Omit boardId to start a new board.`
+        : "";
+
       const checkpointId = randomUUID().replace(/-/g, "").slice(0, 18);
-      await store.save(checkpointId, { elements: resolvedElements });
+      await store.save(checkpointId, { elements: resolvedElements, boardId: board?.id });
       return {
-        content: [{ type: "text", text: `Diagram displayed! Checkpoint id: "${checkpointId}".
+        content: [{ type: "text", text: `Diagram displayed! Checkpoint id: "${checkpointId}".${boardHint}
 If user asks to create a new diagram - simply create a new one from scratch.
 However, if the user wants to edit something on this diagram "${checkpointId}", take these steps:
 1) read widget context (using read_widget_context tool) to check if user made any manual edits first
@@ -505,7 +571,7 @@ However, if the user wants to edit something on this diagram "${checkpointId}", 
   simply start from the first element [{"type":"restoreCheckpoint","id":"${checkpointId}"}, ...your new elements...]
   this will use same diagram state as the user currently sees, including any manual edits they made in fullscreen, allowing you to add elements on top.
   To remove elements, use: {"type":"delete","ids":"<id1>,<id2>"}${ratioHint}` }],
-        structuredContent: { checkpointId },
+        structuredContent: { checkpointId, ...(board ? { boardId: board.id, boardUrl: board.url } : {}) },
       };
     },
   );
@@ -620,7 +686,10 @@ However, if the user wants to edit something on this diagram "${checkpointId}", 
         };
       }
       try {
-        await store.save(id, JSON.parse(data));
+        const edited = JSON.parse(data);
+        const boardId = boards ? (await store.load(id))?.boardId : undefined;
+        await store.save(id, boardId ? { ...edited, boardId } : edited);
+        if (boardId && Array.isArray(edited.elements)) await boards!.update(boardId, edited.elements);
         return { content: [{ type: "text", text: "ok" }] };
       } catch (err) {
         return { content: [{ type: "text", text: `save failed: ${(err as Error).message}` }], isError: true };

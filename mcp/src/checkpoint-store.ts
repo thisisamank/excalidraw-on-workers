@@ -21,9 +21,11 @@ function validateCheckpointId(id: string): void {
   }
 }
 
+export type Checkpoint = { elements: any[]; boardId?: string };
+
 export interface CheckpointStore {
-  save(id: string, data: { elements: any[] }): Promise<void>;
-  load(id: string): Promise<{ elements: any[] } | null>;
+  save(id: string, data: Checkpoint): Promise<void>;
+  load(id: string): Promise<Checkpoint | null>;
 }
 
 export class FileCheckpointStore implements CheckpointStore {
