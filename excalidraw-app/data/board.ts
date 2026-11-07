@@ -1,7 +1,8 @@
 import { debounce } from "@excalidraw/common";
 import { serializeAsJSON } from "@excalidraw/excalidraw/data/json";
+import { exportScene } from "@excalidraw/excalidraw/scene/export";
 import { restoreAppState, restoreElements } from "@excalidraw/excalidraw/data/restore";
-import { getSceneVersion } from "@excalidraw/element";
+import { getNonDeletedElements, getSceneVersion } from "@excalidraw/element";
 
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 import type { AppState, BinaryFiles } from "@excalidraw/excalidraw/types";
@@ -70,6 +71,7 @@ const putBoard = debounce(
       .then((res) => {
         if (res.ok) {
           lastSavedSignature = sig;
+          uploadThumbnail(id, elements, appState, files);
         } else {
           console.error("board save failed", res.status);
         }
@@ -78,6 +80,41 @@ const putBoard = debounce(
   },
   1000,
 );
+
+const uploadThumbnail = async (
+  id: string,
+  elements: readonly ExcalidrawElement[],
+  appState: AppState,
+  files: BinaryFiles,
+) => {
+  const visible = getNonDeletedElements(elements);
+  if (!visible.length) {
+    return;
+  }
+  try {
+    const png = await exportScene({
+      type: "png",
+      data: {
+        elements: visible,
+        appState: { viewBackgroundColor: appState.viewBackgroundColor },
+        files,
+      },
+      config: {
+        maxWidthOrHeight: 640,
+        padding: 24,
+        canvasBackgroundColor: appState.viewBackgroundColor,
+      },
+    });
+    await fetch(`${boardUrl(id)}/thumb`, {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "image/png" },
+      body: png,
+    });
+  } catch (err) {
+    console.error("board thumbnail failed", err);
+  }
+};
 
 export const saveBoard = (
   id: string,
