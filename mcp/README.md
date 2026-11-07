@@ -61,7 +61,11 @@ Text responses can only go so far. Sometimes users need to interact with data, n
 
 PRs welcome! See [Local](#local) above for build instructions.
 
-### Deploy your own instance
+### Deploy to Cloudflare Workers
+
+In this repository the MCP server deploys together with the Excalidraw app as one Worker, with sign-in and boards. See [Deploy](../README.md#deploy) in the root README. The Worker code is in `src/worker.ts`, `src/auth.ts`, `src/boards.ts` and `src/ui.ts`.
+
+### Deploy your own instance (Vercel)
 
 You can deploy your own copy to Vercel in a few clicks:
 
